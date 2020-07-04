@@ -7,13 +7,16 @@
 
 namespace log {
 
+static std::string s_gameStr;
+
 // prepo logging
 void logPrepo(nn::prepo::PlayReport* p_reportObj) {
+    auto outDirPath = "sd:/prepo/" + s_gameStr;
     nn::fs::CreateDirectory("sd:/prepo");
-    nn::fs::CreateDirectory("sd:/prepo/xde");
+    nn::fs::CreateDirectory(outDirPath.c_str());
     nn::time::PosixTime time;
     nn::time::StandardUserSystemClock::GetCurrentTime(&time);
-    std::string reportOutputPath = "sd:/prepo/xde/";
+    std::string reportOutputPath = "sd:/prepo/" + s_gameStr + "/";
     reportOutputPath += std::to_string(time.time) + "_";
     reportOutputPath += std::to_string(svcGetSystemTick()) + "_";
     reportOutputPath += std::string((char*)&p_reportObj->m_EventName) + ".bin";
@@ -34,7 +37,12 @@ Result handleNnPrepoSaveWUid(nn::prepo::PlayReport* p_reportObj, nn::account::Ui
     return nnPrepoSaveWUidBak(p_reportObj, acc);
 }
 
-void prepoSaveHook() {
+void prepoSaveHook(const std::string& gameStr) {
+    if (gameStr.empty()) {
+        LOG("gameStr can't be empty");
+        return;
+    }
+    s_gameStr = gameStr;
     LOG("hooking prepoSave...");
     Result (nn::prepo::PlayReport::*saveAddr)() = &nn::prepo::PlayReport::Save;
     Result (nn::prepo::PlayReport::*saveWUidAddr)(nn::account::Uid const&) = &nn::prepo::PlayReport::Save;
