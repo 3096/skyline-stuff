@@ -103,7 +103,7 @@ void poorPersonsBreakpoint(std::string msg) {
             justContinued = false;
         }
 
-        svcSleepThread(1000000000);
+        svcSleepThread(20000000);
     }
 }
 
