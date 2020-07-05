@@ -1,6 +1,7 @@
 #pragma once
 
 #include <list>
+#include <unordered_map>
 
 #include "nn/hid.hpp"
 #include "skyline/logger/Logger.hpp"
@@ -105,5 +106,20 @@ void poorPersonsBreakpoint(std::string msg) {
         svcSleepThread(1000000000);
     }
 }
+
+// file watch
+static std::unordered_map<void*, std::string> s_fileWatchMap = {};
+
+void addFileHandleToWatch(nn::fs::FileHandle fileHandle, const char* path) {
+    s_fileWatchMap[fileHandle.handle] = path;
+}
+
+void removeFileHandleFromWatch(nn::fs::FileHandle fileHandle) { s_fileWatchMap.erase(fileHandle.handle); }
+
+auto handleIsWatched(nn::fs::FileHandle fileHandle) {
+    return s_fileWatchMap.find(fileHandle.handle) != end(s_fileWatchMap);
+}
+
+auto getHandlePath(nn::fs::FileHandle fileHandle) { return s_fileWatchMap[fileHandle.handle]; }
 
 }  // namespace dbgutil
