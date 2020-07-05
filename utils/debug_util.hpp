@@ -2,6 +2,7 @@
 
 #include <list>
 
+#include "nn/hid.hpp"
 #include "skyline/logger/Logger.hpp"
 #include "skyline/utils/cpputils.hpp"
 #include "util.hpp"
@@ -40,9 +41,11 @@ void logStackTrace() {
     StackFrame* fp;
     asm("mov %[result], FP" : [ result ] "=r"(fp));
 
-    auto traceList = getStackTrace(fp);
+    void* lr;
+    asm("mov %[result], LR" : [ result ] "=r"(lr));
+    LOG("LR is %lx", (size_t)lr - skyline::utils::g_MainTextAddr + TEXT_OFFSET);
 
-    for (auto address : traceList) {
+    for (auto address : getStackTrace(fp)) {
         if (address) {
             if ((size_t)address > skyline::utils::g_MainTextAddr) {
                 LOG("%lx", (size_t)address - skyline::utils::g_MainTextAddr + TEXT_OFFSET);
@@ -58,6 +61,49 @@ auto getFirstReturn() {
     asm("mov %[result], FP" : [ result ] "=r"(fp));
 
     return getStackTrace(fp).front();
+}
+
+void logRegistersX(InlineCtx* ctx) {
+    constexpr auto REGISTER_COUNT = sizeof(ctx->registers) / sizeof(ctx->registers[0]);
+
+    for (auto i = 0u; i < REGISTER_COUNT; i++) {
+        LOG("X%d: %lx", i, ctx->registers[i].x);
+    }
+}
+
+void poorPersonsBreakpoint(std::string msg) {
+#ifdef NOLOG
+    return;
+#endif
+
+    constexpr auto CONTINUE_ONCE_KEY = nn::hid::KEY_ZR;
+    constexpr auto CONTINUE_HOLD_KEY = nn::hid::KEY_ZL;
+
+    static auto justContinued = false;
+    static auto npadFullKeyState = nn::hid::NpadFullKeyState{};
+
+    LOG("Breakpoint reached: %s", msg.c_str());
+
+    while (true) {
+        nn::hid::GetNpadState(&npadFullKeyState, nn::hid::CONTROLLER_PLAYER_1);
+
+        if (npadFullKeyState.Buttons & CONTINUE_HOLD_KEY) {
+            LOG("Breakpoint ignored");
+            break;
+        }
+
+        if (npadFullKeyState.Buttons & CONTINUE_ONCE_KEY) {
+            if (not justContinued) {
+                LOG("Breakpoint continued");
+                justContinued = true;
+                break;
+            }
+        } else if (justContinued) {
+            justContinued = false;
+        }
+
+        svcSleepThread(1000000000);
+    }
 }
 
 }  // namespace dbgutil
