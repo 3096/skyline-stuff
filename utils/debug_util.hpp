@@ -72,6 +72,23 @@ void logRegistersX(InlineCtx* ctx) {
     }
 }
 
+void logMemory(void* address, size_t len) {
+    static const char NIBBLE_LOOKUP[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                                         '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+
+    uint8_t* addressAsBytes = static_cast<uint8_t*>(address);
+    char printBuffer[len * 3];
+    for (auto i = 0u; i < len; i++) {
+        auto printBufferOffset = i * 3;
+        printBuffer[printBufferOffset] = NIBBLE_LOOKUP[addressAsBytes[i] >> 4];
+        printBuffer[printBufferOffset + 1] = NIBBLE_LOOKUP[addressAsBytes[i] & 0xF];
+        printBuffer[printBufferOffset + 2] = ' ';
+    }
+    printBuffer[len * 3 - 1] = '\0';
+
+    LOG("%s", printBuffer);
+}
+
 void poorPersonsBreakpoint(std::string msg) {
 #ifdef NOLOG
     return;
