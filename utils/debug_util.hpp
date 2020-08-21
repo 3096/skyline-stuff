@@ -117,30 +117,47 @@ void poorPersonsBreakpoint(std::string msg) {
 
     constexpr auto CONTINUE_ONCE_KEY = nn::hid::KEY_ZR;
     constexpr auto CONTINUE_HOLD_KEY = nn::hid::KEY_ZL;
+    constexpr auto LOG_BT_KEY = nn::hid::KEY_R;
+    constexpr auto DISABLE_BREAK_POINTS_KEY = nn::hid::KEY_LSTICK | nn::hid::KEY_RSTICK;
 
-    static auto justContinued = false;
+    static auto npadFullKeyStatePrevious = nn::hid::NpadFullKeyState{};
     static auto npadFullKeyState = nn::hid::NpadFullKeyState{};
+    static auto keyComboJustPressed = [](decltype(nn::hid::NpadFullKeyState::Buttons) keyCombo) {
+        return (npadFullKeyState.Buttons & keyCombo) == keyCombo and
+               (npadFullKeyState.Buttons != npadFullKeyStatePrevious.Buttons);
+    };
 
-    LOG("Breakpoint reached: %s", msg.c_str());
+    static auto breakpointIsDisabled = false;
+    if (breakpointIsDisabled) {
+        return;
+    }
+
+    LOG("breakpoint reached: %s", msg.c_str());
 
     while (true) {
         nn::hid::GetNpadState(&npadFullKeyState, nn::hid::CONTROLLER_PLAYER_1);
 
         if (npadFullKeyState.Buttons & CONTINUE_HOLD_KEY) {
-            LOG("Breakpoint ignored");
+            LOG("breakpoint ignored");
             break;
         }
 
-        if (npadFullKeyState.Buttons & CONTINUE_ONCE_KEY) {
-            if (not justContinued) {
-                LOG("Breakpoint continued");
-                justContinued = true;
-                break;
-            }
-        } else if (justContinued) {
-            justContinued = false;
+        if (keyComboJustPressed(CONTINUE_ONCE_KEY)) {
+            LOG("breakpoint continued");
+            break;
         }
 
+        if (keyComboJustPressed(DISABLE_BREAK_POINTS_KEY)) {
+            LOG("all breakpoints disabled");
+            breakpointIsDisabled = true;
+            break;
+        }
+
+        if (keyComboJustPressed(LOG_BT_KEY)) {
+            logStackTrace();
+        }
+
+        npadFullKeyStatePrevious = npadFullKeyState;
         svcSleepThread(20000000);
     }
 }
