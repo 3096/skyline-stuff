@@ -1,8 +1,12 @@
 #pragma once
 
+#include <cxxabi.h>
+
 #include <list>
+#include <sstream>
 #include <unordered_map>
 
+#include "nn/diag.h"
 #include "nn/hid.hpp"
 #include "skyline/logger/Logger.hpp"
 #include "skyline/utils/cpputils.hpp"
@@ -20,22 +24,35 @@ struct StackFrame {
 };
 
 auto getStackTrace(StackFrame* p_stackFrame) {
-    std::list<void*> result;
+    auto result = std::array<uintptr_t, MAX_TRACE_SIZE>{0};
+    nn::diag::GetBacktrace(result.data(), MAX_TRACE_SIZE);
+    return result;
+}
 
-    StackFrame* p_cur_stackFrame = p_stackFrame;
-    for (size_t cur_idx = 0; cur_idx < MAX_TRACE_SIZE; cur_idx++) {
-        /* Validate the current frame. */
-        if (p_cur_stackFrame == nullptr || ((size_t)p_cur_stackFrame % sizeof(void*) != 0)) {
-            break;
-        }
+auto getSymbol(uintptr_t address) -> std::string {
+    auto symbolStrBuffer = std::array<char, 0x100>{0};
+    nn::diag::GetSymbolName(symbolStrBuffer.data(), symbolStrBuffer.size(), address);
 
-        result.push_back(p_cur_stackFrame->lr);
-
-        /* Advance to the next frame. */
-        p_cur_stackFrame = p_cur_stackFrame->p_nextFrame;
+    if (not(strlen(symbolStrBuffer.data()) > 0)) {
+        return "";
     }
 
-    return result;
+    auto symbolAddress = uintptr_t{};
+    if (R_FAILED(nn::ro::LookupSymbol(&symbolAddress, symbolStrBuffer.data()))) {
+        return "nn::ro::LookupSymbol failed";
+    }
+
+    int rc;
+    auto demangledStrBuffer = abi::__cxa_demangle(symbolStrBuffer.data(), nullptr, 0, &rc);
+    if (R_SUCCEEDED(rc)) {
+        strncpy(symbolStrBuffer.data(), demangledStrBuffer, symbolStrBuffer.size() - 1);
+    }
+    free(demangledStrBuffer);
+
+    auto resultSs = std::stringstream{};
+    resultSs << symbolStrBuffer.data() << "+" << std::hex << address - symbolAddress;
+
+    return resultSs.str();
 }
 
 void logStackTrace() {
@@ -44,15 +61,19 @@ void logStackTrace() {
 
     void* lr;
     asm("mov %[result], LR" : [ result ] "=r"(lr));
-    LOG("LR is %lx", (size_t)lr - skyline::utils::g_MainTextAddr + TEXT_OFFSET);
+    LOG("LR is %lx %s", (size_t)lr - skyline::utils::g_MainTextAddr + TEXT_OFFSET, getSymbol((uintptr_t)lr).data());
 
     for (auto address : getStackTrace(fp)) {
-        if (address) {
-            if ((size_t)address > skyline::utils::g_MainTextAddr) {
-                LOG("%lx", (size_t)address - skyline::utils::g_MainTextAddr + TEXT_OFFSET);
-            } else {
-                LOG("main-%lx", skyline::utils::g_MainTextAddr - (size_t)address);
-            }
+        if (not address) {
+            break;
+        }
+
+        auto symbolStrBuffer = getSymbol(address);
+
+        if ((size_t)address > skyline::utils::g_MainTextAddr) {
+            LOG("%lx %s", (size_t)address - skyline::utils::g_MainTextAddr + TEXT_OFFSET, symbolStrBuffer.data());
+        } else {
+            LOG("main-%lx %s", skyline::utils::g_MainTextAddr - (size_t)address, symbolStrBuffer.data());
         }
     }
 }
