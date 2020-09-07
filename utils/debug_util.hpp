@@ -12,6 +12,8 @@
 #include "skyline/utils/cpputils.hpp"
 #include "util.hpp"
 
+extern "C" uint64_t __module_start;
+
 namespace dbgutil {
 
 constexpr size_t TEXT_OFFSET = 0x7100000000;
@@ -23,7 +25,7 @@ struct StackFrame {
     void* lr;
 };
 
-auto getStackTrace(StackFrame* p_stackFrame) {
+auto getStackTrace() {
     auto result = std::array<uintptr_t, MAX_TRACE_SIZE>{0};
     nn::diag::GetBacktrace(result.data(), MAX_TRACE_SIZE);
     return result;
@@ -56,33 +58,21 @@ auto getSymbol(uintptr_t address) -> std::string {
 }
 
 void logStackTrace() {
-    StackFrame* fp;
-    asm("mov %[result], FP" : [ result ] "=r"(fp));
-
-    void* lr;
-    asm("mov %[result], LR" : [ result ] "=r"(lr));
-    LOG("LR is %lx %s", (size_t)lr - skyline::utils::g_MainTextAddr + TEXT_OFFSET, getSymbol((uintptr_t)lr).data());
-
-    for (auto address : getStackTrace(fp)) {
+    for (auto address : getStackTrace()) {
         if (not address) {
             break;
         }
 
         auto symbolStrBuffer = getSymbol(address);
 
-        if ((size_t)address > skyline::utils::g_MainTextAddr) {
+        if ((size_t)address > (size_t)&__module_start) {
+            LOG("skyline+%lx %s", (size_t)address - (size_t)&__module_start, symbolStrBuffer.data());
+        } else if ((size_t)address > skyline::utils::g_MainTextAddr) {
             LOG("%lx %s", (size_t)address - skyline::utils::g_MainTextAddr + TEXT_OFFSET, symbolStrBuffer.data());
         } else {
             LOG("main-%lx %s", skyline::utils::g_MainTextAddr - (size_t)address, symbolStrBuffer.data());
         }
     }
-}
-
-auto getFirstReturn() {
-    StackFrame* fp;
-    asm("mov %[result], FP" : [ result ] "=r"(fp));
-
-    return getStackTrace(fp).front();
 }
 
 void logRegistersX(InlineCtx* ctx) {
@@ -120,11 +110,10 @@ void poorPersonsBreakpoint(std::string msg) {
     constexpr auto LOG_BT_KEY = nn::hid::KEY_R;
     constexpr auto DISABLE_BREAK_POINTS_KEY = nn::hid::KEY_LSTICK | nn::hid::KEY_RSTICK;
 
-    static auto npadFullKeyStatePrevious = nn::hid::NpadFullKeyState{};
     static auto npadFullKeyState = nn::hid::NpadFullKeyState{};
+    static auto prevButtons = decltype(npadFullKeyState.Buttons){};
     static auto keyComboJustPressed = [](decltype(nn::hid::NpadFullKeyState::Buttons) keyCombo) {
-        return (npadFullKeyState.Buttons & keyCombo) == keyCombo and
-               (npadFullKeyState.Buttons != npadFullKeyStatePrevious.Buttons);
+        return (((npadFullKeyState.Buttons & keyCombo) == keyCombo) and ((prevButtons & keyCombo) != keyCombo));
     };
 
     static auto breakpointIsDisabled = false;
@@ -157,7 +146,7 @@ void poorPersonsBreakpoint(std::string msg) {
             logStackTrace();
         }
 
-        npadFullKeyStatePrevious = npadFullKeyState;
+        prevButtons = npadFullKeyState.Buttons;
         svcSleepThread(20000000);
     }
 }

@@ -25,16 +25,14 @@ void logPrepo(nn::prepo::PlayReport* p_reportObj) {
     LOG("Logged report: %s", p_reportObj->m_EventName);
 }
 
-Result (*nnPrepoSaveBak)(nn::prepo::PlayReport*);
-Result handleNnPrepoSave(nn::prepo::PlayReport* p_reportObj) {
-    logPrepo(p_reportObj);
-    return nnPrepoSaveBak(p_reportObj);
+GENERATE_CLASS_HOOK_NAMED(prepoSave, nn::prepo::PlayReport, Save, Result) {
+    logPrepo(p_this);
+    return prepoSaveBak(p_this);
 }
 
-Result (*nnPrepoSaveWUidBak)(nn::prepo::PlayReport*, nn::account::Uid const&);
-Result handleNnPrepoSaveWUid(nn::prepo::PlayReport* p_reportObj, nn::account::Uid const& acc) {
-    logPrepo(p_reportObj);
-    return nnPrepoSaveWUidBak(p_reportObj, acc);
+GENERATE_CLASS_HOOK_NAMED(prepoSaveWUid, nn::prepo::PlayReport, Save, Result, nn::account::Uid const& uid) {
+    logPrepo(p_this);
+    return prepoSaveWUidBak(p_this, uid);
 }
 
 void prepoSaveHook(const std::string& gameStr) {
@@ -43,11 +41,11 @@ void prepoSaveHook(const std::string& gameStr) {
         return;
     }
     s_gameStr = gameStr;
+
     LOG("hooking prepoSave...");
-    Result (nn::prepo::PlayReport::*saveAddr)() = &nn::prepo::PlayReport::Save;
-    Result (nn::prepo::PlayReport::*saveWUidAddr)(nn::account::Uid const&) = &nn::prepo::PlayReport::Save;
-    A64HookFunction(*(void**)&saveAddr, (void*)handleNnPrepoSaveWUid, (void**)&nnPrepoSaveBak);
-    A64HookFunction(*(void**)&saveWUidAddr, (void*)handleNnPrepoSaveWUid, (void**)&nnPrepoSaveWUidBak);
+
+    prepoSaveHook();
+    prepoSaveWUidHook();
 }
 
 }  // namespace log
