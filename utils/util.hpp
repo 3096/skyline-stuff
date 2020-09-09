@@ -1,8 +1,11 @@
 #pragma once
 
+#include <type_traits>
+
 #include "nn/ro.h"
 #include "skyline/efl/service.hpp"
 #include "skyline/inlinehook/And64InlineHook.hpp"
+#include "skyline/nx/arm/counter.h"
 
 namespace util {
 
@@ -44,24 +47,54 @@ static auto s_eflLogBuffer = std::array<char, EFL_LOG_BUFFER_SIZE>{0};
     }                                                                                        \
     ReturnType name##Replace(__VA_OPT__(__VA_ARGS__))
 
-#define GENERATE_CLASS_HOOK(ClassName, methodName, ReturnType, ...)                                          \
-    ReturnType (*methodName##Bak)(ClassName * __VA_OPT__(, __VA_ARGS__));                                    \
-    ReturnType methodName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__));                             \
+#define CLASS_METHOD_RETURN_TYPE(ClassName, methodName, ...) \
+    std::result_of<decltype (&ClassName::methodName)(ClassName __VA_OPT__(, __VA_ARGS__))>::type
+
+#define GENERATE_CLASS_HOOK(ClassName, methodName, ...)                                                      \
+    CLASS_METHOD_RETURN_TYPE(ClassName, methodName __VA_OPT__(, __VA_ARGS__))                                \
+    (*methodName##Bak)(ClassName * __VA_OPT__(, __VA_ARGS__));                                               \
+                                                                                                             \
+    CLASS_METHOD_RETURN_TYPE(ClassName, methodName __VA_OPT__(, __VA_ARGS__))                                \
+    methodName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__));                                        \
     void methodName##Hook() {                                                                                \
         LOG("hooking %s::%s...", STRINGIFY(ClassName), STRINGIFY(methodName));                               \
         auto methodName##Addr = &ClassName::methodName;                                                      \
         A64HookFunction(*(void**)(&methodName##Addr), (void*)methodName##Replace, (void**)&methodName##Bak); \
     }                                                                                                        \
-    ReturnType methodName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__))
+                                                                                                             \
+    CLASS_METHOD_RETURN_TYPE(ClassName, methodName __VA_OPT__(, __VA_ARGS__))                                \
+    methodName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__))
 
-#define GENERATE_CLASS_HOOK_NAMED(hookName, ClassName, methodName, ReturnType, ...)                        \
-    ReturnType (*hookName##Bak)(ClassName * __VA_OPT__(, __VA_ARGS__));                                    \
-    ReturnType hookName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__));                             \
-    void hookName##Hook() {                                                                                \
-        LOG("hooking %s::%s(%s)...", STRINGIFY(ClassName), STRINGIFY(methodName), STRINGIFY(__VA_ARGS__)); \
-        ReturnType (ClassName::*hookName##Addr)() = &ClassName::methodName;                                \
-        A64HookFunction(*(void**)&hookName##Addr, (void*)hookName##Replace, (void**)&hookName##Bak);       \
-    }                                                                                                      \
+#define GENERATE_CLASS_HOOK_NAMED(hookName, ClassName, methodName, ReturnType, ...)                       \
+    ReturnType (*hookName##Bak)(ClassName * __VA_OPT__(, __VA_ARGS__));                                   \
+    ReturnType hookName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__));                            \
+    void hookName##Hook() {                                                                               \
+        LOG("hooking %s::%s to %s...", STRINGIFY(ClassName), STRINGIFY(methodName), STRINGIFY(hookName)); \
+        ReturnType (ClassName::*hookName##Addr)(__VA_ARGS__) = &ClassName::methodName;                    \
+        A64HookFunction(*(void**)&hookName##Addr, (void*)hookName##Replace, (void**)&hookName##Bak);      \
+    }                                                                                                     \
     ReturnType hookName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__))
+
+class FpsLogger {
+    uint m_frameCount;
+    uint64_t m_lastSecondTick;
+
+   public:
+    FpsLogger() : m_lastSecondTick(armGetSystemTick()) {}
+
+    void tick() {
+        auto curTick = armGetSystemTick();
+        if (curTick - m_lastSecondTick > armGetSystemTickFreq()) {
+            LOG("%d fps", m_frameCount);
+            m_frameCount = 0;
+            m_lastSecondTick = armGetSystemTick();
+        } else {
+            m_frameCount++;
+        }
+    }
+};
+#define LOG_FPS                                  \
+    static auto s_fpsLogger = util::FpsLogger{}; \
+    s_fpsLogger.tick();
 
 }  // namespace util
