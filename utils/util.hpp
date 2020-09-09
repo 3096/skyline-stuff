@@ -56,6 +56,7 @@ static auto s_eflLogBuffer = std::array<char, EFL_LOG_BUFFER_SIZE>{0};
                                                                                                              \
     CLASS_METHOD_RETURN_TYPE(ClassName, methodName __VA_OPT__(, __VA_ARGS__))                                \
     methodName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__));                                        \
+                                                                                                             \
     void methodName##Hook() {                                                                                \
         LOG("hooking %s::%s...", STRINGIFY(ClassName), STRINGIFY(methodName));                               \
         auto methodName##Addr = &ClassName::methodName;                                                      \
@@ -65,15 +66,25 @@ static auto s_eflLogBuffer = std::array<char, EFL_LOG_BUFFER_SIZE>{0};
     CLASS_METHOD_RETURN_TYPE(ClassName, methodName __VA_OPT__(, __VA_ARGS__))                                \
     methodName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__))
 
-#define GENERATE_CLASS_HOOK_NAMED(hookName, ClassName, methodName, ReturnType, ...)                       \
-    ReturnType (*hookName##Bak)(ClassName * __VA_OPT__(, __VA_ARGS__));                                   \
-    ReturnType hookName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__));                            \
+#define CLASS_OVERLOADED_METHOD_RETURN_TYPE(ClassName, methodPtr, ...) \
+    std::result_of<decltype(methodPtr)(ClassName __VA_OPT__(, __VA_ARGS__))>::type
+
+#define GENERATE_CLASS_HOOK_NAMED(hookName, ClassName, methodName, ...)                                   \
+    auto (ClassName::*hookName##Addr)(__VA_ARGS__) = &ClassName::methodName;                              \
+                                                                                                          \
+    CLASS_OVERLOADED_METHOD_RETURN_TYPE(ClassName, hookName##Addr __VA_OPT__(, __VA_ARGS__))              \
+    (*hookName##Bak)(ClassName * __VA_OPT__(, __VA_ARGS__));                                              \
+                                                                                                          \
+    CLASS_OVERLOADED_METHOD_RETURN_TYPE(ClassName, hookName##Addr __VA_OPT__(, __VA_ARGS__))              \
+    hookName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__));                                       \
+                                                                                                          \
     void hookName##Hook() {                                                                               \
         LOG("hooking %s::%s to %s...", STRINGIFY(ClassName), STRINGIFY(methodName), STRINGIFY(hookName)); \
-        ReturnType (ClassName::*hookName##Addr)(__VA_ARGS__) = &ClassName::methodName;                    \
         A64HookFunction(*(void**)&hookName##Addr, (void*)hookName##Replace, (void**)&hookName##Bak);      \
     }                                                                                                     \
-    ReturnType hookName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__))
+                                                                                                          \
+    CLASS_OVERLOADED_METHOD_RETURN_TYPE(ClassName, hookName##Addr __VA_OPT__(, __VA_ARGS__))              \
+    hookName##Replace(ClassName* p_this __VA_OPT__(, __VA_ARGS__))
 
 class FpsLogger {
     uint m_frameCount;

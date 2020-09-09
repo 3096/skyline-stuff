@@ -25,12 +25,12 @@ void logPrepo(nn::prepo::PlayReport* p_reportObj) {
     LOG("Logged report: %s", p_reportObj->m_EventName);
 }
 
-GENERATE_CLASS_HOOK_NAMED(prepoSave, nn::prepo::PlayReport, Save, Result) {
+GENERATE_CLASS_HOOK_NAMED(prepoSave, nn::prepo::PlayReport, Save) {
     logPrepo(p_this);
     return prepoSaveBak(p_this);
 }
 
-GENERATE_CLASS_HOOK_NAMED(prepoSaveWUid, nn::prepo::PlayReport, Save, Result, nn::account::Uid const& uid) {
+GENERATE_CLASS_HOOK_NAMED(prepoSaveWUid, nn::prepo::PlayReport, Save, nn::account::Uid const& uid) {
     logPrepo(p_this);
     return prepoSaveWUidBak(p_this, uid);
 }
