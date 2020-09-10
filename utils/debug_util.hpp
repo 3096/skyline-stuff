@@ -6,9 +6,11 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "hid.hpp"
 #include "nn/diag.h"
 #include "nn/hid.hpp"
 #include "skyline/logger/Logger.hpp"
+#include "skyline/nx/kernel/svc.h"
 #include "skyline/utils/cpputils.hpp"
 #include "util.hpp"
 
@@ -84,6 +86,7 @@ void logRegistersX(InlineCtx* ctx) {
 }
 
 void logMemory(void* address, size_t len) {
+#ifndef NOLOG
     static const char NIBBLE_LOOKUP[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                                          '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
@@ -98,55 +101,51 @@ void logMemory(void* address, size_t len) {
     printBuffer[len * 3 - 1] = '\0';
 
     LOG("%s", printBuffer);
+#endif
 }
 
 void poorPersonsBreakpoint(std::string msg) {
 #ifdef NOLOG
     return;
 #endif
-
     constexpr auto CONTINUE_ONCE_KEY = nn::hid::KEY_ZR;
     constexpr auto CONTINUE_HOLD_KEY = nn::hid::KEY_ZL;
     constexpr auto LOG_BT_KEY = nn::hid::KEY_R;
     constexpr auto DISABLE_BREAK_POINTS_KEY = nn::hid::KEY_LSTICK | nn::hid::KEY_RSTICK;
-
-    static auto npadFullKeyState = nn::hid::NpadFullKeyState{};
-    static auto prevButtons = decltype(npadFullKeyState.Buttons){};
-    static auto keyComboJustPressed = [](decltype(nn::hid::NpadFullKeyState::Buttons) keyCombo) {
-        return (((npadFullKeyState.Buttons & keyCombo) == keyCombo) and ((prevButtons & keyCombo) != keyCombo));
-    };
 
     static auto breakpointIsDisabled = false;
     if (breakpointIsDisabled) {
         return;
     }
 
+    auto npadScanner = util::NpadScanner{.useHandheldStyle = true, .npadId = nn::hid::CONTROLLER_PLAYER_1};
+    npadScanner.scanInput();  // prepare privButtons
+
     LOG("breakpoint reached: %s", msg.c_str());
 
     while (true) {
-        nn::hid::GetNpadState(&npadFullKeyState, nn::hid::CONTROLLER_PLAYER_1);
+        npadScanner.scanInput();
 
-        if (npadFullKeyState.Buttons & CONTINUE_HOLD_KEY) {
+        if (npadScanner.keyState.Buttons & CONTINUE_HOLD_KEY) {
             LOG("breakpoint ignored");
             break;
         }
 
-        if (keyComboJustPressed(CONTINUE_ONCE_KEY)) {
+        if (npadScanner.keyComboJustPressed(CONTINUE_ONCE_KEY)) {
             LOG("breakpoint continued");
             break;
         }
 
-        if (keyComboJustPressed(DISABLE_BREAK_POINTS_KEY)) {
+        if (npadScanner.keyComboJustPressed(DISABLE_BREAK_POINTS_KEY)) {
             LOG("all breakpoints disabled");
             breakpointIsDisabled = true;
             break;
         }
 
-        if (keyComboJustPressed(LOG_BT_KEY)) {
+        if (npadScanner.keyComboJustPressed(LOG_BT_KEY)) {
             logStackTrace();
         }
 
-        prevButtons = npadFullKeyState.Buttons;
         svcSleepThread(20000000);
     }
 }
